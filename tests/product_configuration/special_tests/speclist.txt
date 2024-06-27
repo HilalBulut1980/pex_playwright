@@ -1,0 +1,6 @@
+tests/product_configuration/special_tests/checkout_progressbar_long.spec.js
+tests/product_configuration/special_tests/checkout_progressbar_short.spec.js
+tests/product_configuration/special_tests/compare_list.spec.js
+tests/product_configuration/special_tests/configure_roof_edit_cart.spec.js
+tests/product_configuration/special_tests/configure_specialforms_edit_cart.spec.js
+tests/product_configuration/special_tests/configure_vertical_edit_cart.spec.js

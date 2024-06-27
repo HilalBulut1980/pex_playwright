@@ -1,0 +1,9 @@
+tests/product_configuration/roof/configure_nonstandard_DF20C_Selene-4535.spec.js
+tests/product_configuration/roof/configure_nonstandard_DF20_Riva-2009.spec.js
+tests/product_configuration/roof/configure_nonstandard_DF30C_Curly-4365.spec.js
+tests/product_configuration/roof/configure_nonstandard_Wabe_DF20C_Camera-Blackout-4963.spec.js
+tests/product_configuration/roof/configure_nonstandard_Wabe_DF20_Sirmione-2024.spec.js
+tests/product_configuration/roof/configure_nonstandard_Wabe_DF30C_Wabe-Flair-4837.spec.js
+tests/product_configuration/roof/configure_standard_DF20C_Roto_Novara-4520.spec.js
+tests/product_configuration/roof/configure_standard_DF20_Velux_Duo-4010.spec.js
+tests/product_configuration/roof/configure_standard_DF30C_Fakro_Amparo-4529.spec.js

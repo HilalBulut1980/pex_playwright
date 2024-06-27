@@ -1,0 +1,1 @@
+tests/product_configuration/rmg/configure_F1_direkt_Varese-4449_RMG.spec.js

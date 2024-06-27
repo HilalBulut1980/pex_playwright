@@ -1,0 +1,4 @@
+tests/product_configuration/neg_vatid/configure_NEG_vatid_CZ_gast_sameAddress.spec.js
+tests/product_configuration/neg_vatid/configure_NEG_vatid_SI_IT_gast_newAddress.spec.js
+tests/product_configuration/neg_vatid/configure_NEG_vatid_SK_BG_gast_newAddress.spec.js
+tests/product_configuration/neg_vatid/configure_NEG_vatid_SK_gast_sameAddress.spec.js

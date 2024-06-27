@@ -1,0 +1,8 @@
+tests/product_configuration/gutscheine/configure_gutschein_email_at.spec.js
+tests/product_configuration/gutscheine/configure_gutschein_email_ch.spec.js
+tests/product_configuration/gutscheine/configure_gutschein_email_de.spec.js
+tests/product_configuration/gutscheine/configure_gutschein_email_eu.spec.js
+tests/product_configuration/gutscheine/configure_gutschein_post_at.spec.js
+tests/product_configuration/gutscheine/configure_gutschein_post_ch.spec.js
+tests/product_configuration/gutscheine/configure_gutschein_post_de.spec.js
+tests/product_configuration/gutscheine/configure_gutschein_post_eu.spec.js
