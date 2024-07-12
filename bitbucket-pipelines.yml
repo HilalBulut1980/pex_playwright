@@ -1,0 +1,631 @@
+image: mcr.microsoft.com/playwright:v1.44.1-jammy
+
+
+definitions:
+
+  specgroup_variables: &variable-list   # I M P O R T A N T --> NEVER include specgroup "NONE" into this list" !!
+    - "*"
+    - CUSTOM
+    - algolia
+    - gutscheine
+    - muster
+    - neg_empty_inputs
+    - neg_paypal
+    - neg_roof 
+    - neg_special_hexagon
+    - neg_special_pentagon
+    - neg_special_plafond
+    - neg_special_rectangle_I
+    - neg_special_rectangle_II
+    - neg_special_triangle
+    - neg_vatid
+    - neg_vertical 
+    - rabattcodes
+    - rmg
+    - roof
+    - serviceProducts
+    - special_tests
+    - specialForms
+    - user
+    - vatid 
+    - vertical
+    - zubehoer
+ 
+
+  multiple_specgroup-variables: &multiple-variable-list  # I M P O R T A N T --> NEVER include specgroup "CUSTOM and "*" into this list" !!
+    - algolia
+    - gutscheine
+    - muster
+    - neg_empty_inputs
+    - neg_paypal
+    - neg_roof 
+    - neg_special_hexagon
+    - neg_special_pentagon
+    - neg_special_plafond
+    - neg_special_rectangle_I
+    - neg_special_rectangle_II
+    - neg_special_triangle
+    - neg_vatid
+    - neg_vertical 
+    - rabattcodes
+    - rmg
+    - roof
+    - serviceProducts
+    - special_tests
+    - specialForms
+    - user
+    - vatid 
+    - vertical
+    - zubehoer
+    - "NONE"    
+
+
+  vars: &varlist
+    - name: SPECGROUP
+      default: "*"
+      allowed-values: *variable-list
+    - name: SPECGROUP_2
+      default: "NONE"
+      allowed-values: *multiple-variable-list     
+    - name: SPECGROUP_3
+      default: "NONE"
+      allowed-values: *multiple-variable-list  
+
+
+
+  extravars: &extended-varlist 
+    - name: TESTBRANCH
+      default: ""
+    - name: SPECGROUP
+      default: "*"
+      allowed-values: *variable-list
+    - name: SPECGROUP_2
+      default: "NONE"
+      allowed-values: *multiple-variable-list     
+    - name: SPECGROUP_3
+      default: "NONE"
+      allowed-values: *multiple-variable-list  
+
+
+
+  yaml-anchors: # nobody cares what you call this, but note anchors are not necessarily steps
+
+    - &setup-script >-
+        npm ci
+        && npx playwright --version
+        && ls -la
+        && npm install @currents/playwright@latest
+        && npm list
+        && mv tests/SPECS tests/product_configuration/ 
+        && ls -A tests/product_configuration/SPECS  
+
+
+    # also, the "step:" prefixes are dropped by the YAML anchor
+    # and obviated by bitbucket-pipelines-the-application
+    - &base-step
+        caches:
+          - node
+
+
+  steps:
+
+  # job definition for generating current speclist
+    - step: &generate-speclist
+        name: update speclist
+        max-time: 5
+        script: 
+          - echo "Committing new specfiles"
+          - bash list-specfiles.sh tests/product_configuration 
+          - git add tests/product_configuration/*
+          # Use [skip ci] when you are pushing back to your repository. This will stop pipelines triggering on the new commit and avoid an eternal loop!
+          - git commit -m "Auto-generate speclists [skip ci]"
+          - git push
+        condition:
+          changesets:
+            includePaths:
+              - "tests/product_configuration/*/*"
+
+
+    # job definition for handling chosen specgroups
+    - step: &assign-specfiles
+        name: handle chosen specgroups
+        image: alpine:latest  # use lightweight alpine linux image to accelarate step
+        max-time: 5
+        script:
+          - mkdir tests/SPECS
+          - >- 
+            if [ "$SPECGROUP" != "NONE" ] && [ "$SPECGROUP" != "CUSTOM" ] ; then
+               if [ "$SPECGROUP" != "*" ]; then
+                  cp -r tests/product_configuration/"$SPECGROUP"/* tests/SPECS
+                  countspecs=$(ls tests/SPECS | grep spec.js | wc -l)
+                  echo "Total specfiles: $countspecs"
+               else 
+                 while read line; do
+                   cp -r tests/product_configuration/"$line"/* tests/SPECS
+                 done < <(ls tests/product_configuration)
+                 
+                 countspecs=$(ls tests/SPECS | grep spec.js | wc -l)
+                 echo "Total specfiles: $countspecs"
+               fi
+            fi
+          - >-
+            if [ "$SPECGROUP" = "CUSTOM" ] ; then 
+               while read -r line; do 
+                 echo "$line"
+                 cp "$line" tests/SPECS
+               done  < custom-speclist.txt
+
+               countspecs=$(ls tests/SPECS | grep spec.js | wc -l)
+               echo "Total specfiles: $countspecs"
+            fi
+          - >-
+            if [ "$SPECGROUP_2" != "NONE" ] && [ "$SPECGROUP_2" != "CUSTOM" ] && [ "$SPECGROUP_2" != "$SPECGROUP" ] && [ "$SPECGROUP" != "*" ] && [ "$SPECGROUP_2" != "*" ] ; then 
+               cp -r tests/product_configuration/"$SPECGROUP_2"/. tests/SPECS
+               countspecs=$(ls tests/SPECS | grep spec.js | wc -l)
+               echo "Total specfiles: $countspecs"
+            fi 
+          - >-
+            if [ "$SPECGROUP_3" != "NONE" ] && [ "$SPECGROUP_3" != "CUSTOM" ] && [ "$SPECGROUP_3" != "$SPECGROUP" ] && [ "$SPECGROUP_3" != "$SPECGROUP_2" ] && [ "$SPECGROUP" != "*" ] && [ "$SPECGROUP_3" != "*" ] ; then 
+               cp -r tests/product_configuration/"$SPECGROUP_3"/. tests/SPECS
+               countspecs=$(ls tests/SPECS | grep spec.js | wc -l)
+               echo "Total specfiles: $countspecs"
+            fi 
+          - ls -A tests/SPECS/*.js
+        artifacts: # defining the artifacts to be passed to each future step.
+          - tests/SPECS/**      
+
+
+  # job definition for running spec tests on production  
+    - step: &run-specs-production-no-order
+        name: 'Playwright Tests - Production no order'
+        max-time: 30
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+           # we do not run sepa tests on production due geolocation issues
+          - rm -f /tests/product_configuration/SPECS/configure_VS2_Klebeleisten_Finura-4440_Sepa.spec.js
+           # we do not run paypal tests on production - no (real) testaccount available
+          - rm -f /tests/product_configuration/SPECS/configure_VS1_direkt_Bologna-2028_PayPalExpress.spec.js
+          # - Run the test cases 
+          - BASE_URL=https://www.....de PLACE_ORDER=false npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag production_no_order
+        artifacts:
+          - playwright-report/index.html
+
+
+  # job definition for running spec tests on stage without order 
+    - step: &run-specs-stage-no-order
+        name: 'Playwright Tests - Stage no order'
+        max-time: 30
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          # Run the test cases 
+          - BASE_URL=https://stage.....de APPLY_RULES=true PLACE_ORDER=false npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag stage_no_order
+        artifacts:
+          - playwright-report/index.html
+
+
+  # job definition for running spec tests on stage with order  
+    - step: &run-specs-stage-with-order
+        name: 'Playwright Tests - Stage with order'
+        max-time: 45
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          # - Run the test cases 
+          - BASE_URL=https://stage.....de APPLY_RULES=true PLACE_ORDER=true npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag stage_with_order
+        artifacts:
+          - playwright-report/index.html
+
+
+  # job definition for running spec tests on pexdelphinus without order
+    - step: &run-specs-pexdelphinus-no-order
+        name: 'Playwright Tests - pexdelphinus no order'
+        max-time: 30
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          # - Run the test cases 
+          - BASE_URL=https://....de/ APPLY_RULES=true PLACE_ORDER=false npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag pexdelphinus_no_order
+        artifacts:
+          - playwright-report/index.html
+
+
+  # job definition for running spec tests on pexdelphinus with order
+    - step: &run-specs-pexdelphinus-with-order
+        name: 'Playwright Tests - pexdelphinus with order'
+        max-time: 45
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          # - Run the test cases 
+          - BASE_URL=https://....de/ APPLY_RULES=true PLACE_ORDER=true npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag pexdelphinus_with_order
+        artifacts:
+          - playwright-report/index.html
+
+
+  # job definition for running spec tests on pexhilal without order
+    - step: &run-specs-pexhilal-no-order
+        name: 'Playwright Tests - pexhilal no order'
+        max-time: 30
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          # - Run the test cases 
+          - BASE_URL=https://....de/ APPLY_RULES=true PLACE_ORDER=false npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag pexhilal_no_order
+        artifacts:
+          - playwright-report/index.html
+
+
+  # job definition for running spec tests on pexhilal with order
+    - step: &run-specs-pexhilal-with-order
+        name: 'Playwright Tests - pexhilal with order'
+        max-time: 45
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          # - Run the test cases 
+          - BASE_URL=https://....de/ APPLY_RULES=true PLACE_ORDER=true npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag pexhilal_with_order
+        artifacts:
+          - playwright-report/index.html
+
+
+  # job definition for running spec tests on pexhakan without order
+    - step: &run-specs-pexhakan-no-order
+        name: 'Playwright Tests - pexhakan no order'
+        max-time: 30
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          # - Run the test cases 
+          - BASE_URL=https://....de/ APPLY_RULES=true PLACE_ORDER=false npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag pexhakan_no_order
+        artifacts:
+          - playwright-report/index.html
+
+
+  # job definition for running spec tests on pexhakan with order
+    - step: &run-specs-pexhakan-with-order
+        name: 'Playwright Tests - pexhakan with order'
+        max-time: 45
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          # - Run the test cases 
+          - BASE_URL=https://....de/ APPLY_RULES=true PLACE_ORDER=true npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --shard=$(($BITBUCKET_PARALLEL_STEP+1))/$BITBUCKET_PARALLEL_STEP_COUNT --tag pexhakan_with_order
+        artifacts:
+          - playwright-report/index.html
+
+
+    - step: &login-to-server-and-run-specs-no-order
+        name: setup testserver and run tests
+        max-time: 45
+        <<: *base-step
+        script: 
+          - *setup-script
+          - curl ifconfig.me
+          - pipe: atlassian/ssh-run:0.8.0
+            variables:
+              SSH_USER: 'delphinu'
+              SERVER: 'delphinus-test.de'
+              MODE: 'command'
+              COMMAND: './minidump_pex/04_scripts/expect.sh $TESTUMGEBUNG $TESTBRANCH $IMPORT_MINIDUMP' # checkout testumgebung on specified testbranch
+        after-script:
+            - echo $BITBUCKET_EXIT_CODE
+            - echo baseUrl=https://$TESTUMGEBUNG.delphinus-test.de
+            - curl -u staging:staging_pwd -X POST https://${TESTUMGEBUNG}/scripts/catalogrules/apply_rules.php
+            - if [[ $BITBUCKET_EXIT_CODE -eq 0 ]]; then BASE_URL=https://${TESTUMGEBUNG}.delphinus-test.de  PLACE_ORDER=false  npx pwc ./tests/product_configuration/SPECS/* --project chromium --ci-build-id $BITBUCKET_BUILD_NUMBER --key wknitDb4o3wFrKeK --project-id 1QoqRI --tag "$TESTUMGEBUNG-NO-order" ; else echo "Step failed!"; fi
+ 
+
+pipelines:
+  default:
+    - step: *generate-speclist
+
+
+  custom: # Pipelines that are triggered manually
+  
+    specify-testumgebung-NO-order: 
+      - variables:         
+          - name: TESTUMGEBUNG
+            default: "pex"  
+            allowed-values:        
+              - "pex"
+              - "pexhakan"
+              - "pexhilal"
+          - name: TESTBRANCH
+            default: ""
+          - name: SPECGROUP
+            default: "*"
+            allowed-values: *variable-list
+          - name: SPECGROUP_2
+            default: "NONE"
+            allowed-values: *multiple-variable-list     
+          - name: SPECGROUP_3
+            default: "NONE"
+            allowed-values: *multiple-variable-list
+          - name: IMPORT_MINIDUMP
+            default: "nein"
+            allowed-values: 
+              - "nein"
+              - "ja" 
+      - step: *assign-specfiles      
+      - step:
+          name: check testbranch
+          script:
+            - if [ -z "$TESTBRANCH" ] ; then TESTBRANCH="CURRENT" ; fi         
+            - echo "Es wird auf $TESTUMGEBUNG gegen Testbranch $TESTBRANCH getestet. "            
+      - step: *login-to-server-and-run-specs-no-order
+    
+
+
+    PRODUCTION-no-order: # The name that is displayed in the list in the Bitbucket 
+      - variables: *varlist
+      - step: *assign-specfiles           
+      - parallel:
+         # run 20 steps in parallel 
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+         - step: *run-specs-production-no-order
+
+
+
+    STAGE-no-order: # The name that is displayed in the list in the Bitbucket  
+      - variables: *varlist 
+      - step: *assign-specfiles
+      - parallel:
+         # run 10 steps in parallel 
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order          
+         - step: *run-specs-stage-no-order 
+
+
+
+    STAGE-with-order: # The name that is displayed in the list in the Bitbucket  
+      - variables: *varlist
+      - step: *assign-specfiles
+      - parallel:
+         # run 20 steps in parallel 
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order 
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order          
+         - step: *run-specs-stage-with-order           
+
+
+
+    pexdelphinus-no-order: # The name that is displayed in the list in the Bitbucket  
+      - variables: *extended-varlist
+      - step: *assign-specfiles
+      - step:
+          name: prepare testing environment
+          max-time: 10
+          script:
+             - if [ -z "$TESTBRANCH" ] ; then TESTBRANCH="CURRENT" ; fi
+             - echo "Es wird OHNE Bestellabgabe auf ....de gegen $TESTBRANCH getestet."
+             - pipe: atlassian/ssh-run:0.8.0
+               variables:
+                 SSH_USER: 'delphinu'
+                 SERVER: 'delphinus-test.de'
+                 MODE: 'command'
+                 COMMAND: './minidump_pex/04_scripts/expect.sh pex $TESTBRANCH $IMPORT_MINIDUMP' # checkout ....de on specified testbranch
+          after-script:
+            - echo $BITBUCKET_EXIT_CODE
+      - parallel:
+         # run 10 steps in parallel 
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+         - step: *run-specs-pexdelphinus-no-order         
+
+
+
+    pexdelphinus-with-order: # The name that is displayed in the list in the Bitbucket  
+      - variables: *extended-varlist
+      - step: *assign-specfiles
+      - step:
+          name: prepare testing environment
+          max-time: 10
+          script:
+            - if [ -z "$TESTBRANCH" ] ; then TESTBRANCH="CURRENT" ; fi
+            - echo "Es wird MIT Bestellabgabe auf ....de gegen $TESTBRANCH getestet."
+            - pipe: atlassian/ssh-run:0.8.0
+              variables:
+                SSH_USER: 'delphinu'
+                SERVER: 'delphinus-test.de'
+                MODE: 'command'
+                COMMAND: './minidump_pex/04_scripts/expect.sh pex $TESTBRANCH $IMPORT_MINIDUMP'
+          after-script:
+            - echo $BITBUCKET_EXIT_CODE
+      - parallel:
+    # run 10 steps in parallel 
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+         - step: *run-specs-pexdelphinus-with-order         
+
+
+
+    pexhilal-no-order: # The name that is displayed in the list in the Bitbucket  
+      - variables: *extended-varlist
+      - step: *assign-specfiles
+      - step:
+          name: prepare testing environment
+          max-time: 10
+          script:
+           - if [ -z "$TESTBRANCH" ] ; then TESTBRANCH="CURRENT" ; fi
+           - echo "Es wird OHNE Bestellabgabe auf pexhilal gegen $TESTBRANCH getestet."
+           - pipe: atlassian/ssh-run:0.8.0
+             variables:
+               SSH_USER: 'delphinu'
+               SERVER: 'delphinus-test.de'
+               MODE: 'command'
+               COMMAND: './minidump_pex/04_scripts/expect.sh pexhilal $TESTBRANCH $IMPORT_MINIDUMP'
+          after-script:
+            - echo $BITBUCKET_EXIT_CODE
+      - parallel:
+    # run 10 steps in parallel 
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+         - step: *run-specs-pexhilal-no-order         
+
+
+
+    pexhilal-with-order: # The name that is displayed in the list in the Bitbucket  
+      - variables: *extended-varlist
+      - step: *assign-specfiles           
+      - step:
+          name: prepare testing environment
+          max-time: 10
+          script:
+            - if [ -z "$TESTBRANCH" ] ; then TESTBRANCH="CURRENT" ; fi 
+            - echo "Es wird MIT Bestellabgabe auf pexhilal gegen $TESTBRANCH getestet."
+            - pipe: atlassian/ssh-run:0.8.0
+              variables:
+                SSH_USER: 'delphinu'
+                SERVER: 'delphinus-test.de'
+                MODE: 'command'
+                COMMAND: './minidump_pex/04_scripts/expect.sh pexhilal $TESTBRANCH $IMPORT_MINIDUMP'
+          after-script:
+            - echo $BITBUCKET_EXIT_CODE
+      - parallel:
+    # run 10 steps in parallel 
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+         - step: *run-specs-pexhilal-with-order         
+
+
+
+    pexhakan-no-order: # The name that is displayed in the list in the Bitbucket  
+      - variables: *extended-varlist
+      - step: *assign-specfiles   
+      - step:
+          name: prepare testing environment
+          max-time: 10
+          script:
+           - if [ -z "$TESTBRANCH" ] ; then TESTBRANCH="CURRENT" ; fi          
+           - echo "Es wird OHNE Bestellabgabe auf pexhakan gegen $TESTBRANCH getestet."
+           - pipe: atlassian/ssh-run:0.8.0
+             variables:
+               SSH_USER: 'delphinu'
+               SERVER: 'delphinus-test.de'
+               MODE: 'command'
+               COMMAND: './minidump_pex/04_scripts/expect.sh pexhakan $TESTBRANCH $IMPORT_MINIDUMP'
+          after-script:
+            - echo $BITBUCKET_EXIT_CODE
+      - parallel:
+    # run 10 steps in parallel 
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+         - step: *run-specs-pexhakan-no-order         
+
+
+
+    pexhakan-with-order: # The name that is displayed in the list in the Bitbucket  
+      - variables: *extended-varlist
+      - step: *assign-specfiles
+      - step:
+          name: prepare testing environment
+          max-time: 10
+          script:
+            - if [ -z "$TESTBRANCH" ] ; then TESTBRANCH="CURRENT" ; fi
+            - echo "Es wird MIT Bestellabgabe auf pexhakan gegen $TESTBRANCH getestet."
+            - pipe: atlassian/ssh-run:0.8.0
+              variables:
+                SSH_USER: 'delphinu'
+                SERVER: 'delphinus-test.de'
+                MODE: 'command'
+                COMMAND: './minidump_pex/04_scripts/expect.sh pexhakan $TESTBRANCH $IMPORT_MINIDUMP'
+          after-script:
+            - echo $BITBUCKET_EXIT_CODE
+      - parallel:
+    # run 10 steps in parallel 
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
+         - step: *run-specs-pexhakan-with-order         
